@@ -1,0 +1,314 @@
+#include <unistd.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+
+#define BUFFER_LEN (size_t) 4096
+#define FIRST_LINE_ALLOC_SIZE (size_t) 2
+#define FIRST_ARRAY_SIZE (size_t) 2
+
+int my_write(int fd, const char *buf, size_t bytes) {
+  size_t bytes_to_be_written;
+  size_t bytes_already_written;
+  ssize_t bytes_written_this_time;
+
+  bytes_to_be_written = bytes;
+  bytes_already_written = (size_t) 0;
+  
+  while (bytes_to_be_written > ((size_t) 0)) {
+    bytes_written_this_time = write(fd, &buf[bytes_already_written],
+				    bytes_to_be_written);
+    if (bytes_written_this_time < ((ssize_t) 0)) {
+      return -1;
+    }
+    bytes_to_be_written -= (size_t) bytes_written_this_time;
+    bytes_already_written += (size_t) bytes_written_this_time;
+  }
+  return 0;
+}
+
+
+int main(int argc, char* argv) { // start of main
+  char buffer[BUFFER_LEN];
+  ssize_t read_res;
+  size_t read_bytes;
+  char c;
+  size_t i;
+  char *current_line;
+  size_t current_line_len,  current_line_size;
+  char *ptr;
+  char **lines;
+  char **lptr;
+  size_t lines_len, lines_size;
+  size_t *lines_lengths;
+  size_t *llptr;
+	
+  // initialize variables & pointers
+  current_line_len = (size_t) 0;
+  current_line_size = (size_t) 0;
+  current_line = NULL;
+  lines_len = (size_t) 0;
+  lines_size = (size_t) 0;
+  lines = NULL;
+  lines_lengths = NULL;
+
+  
+  while (1) { // start of while loop
+    
+    // read input into buffer
+    read_res = read(0, buffer, sizeof(buffer));
+		
+    // returned value of 0 indicates an EOF--break from while loop
+    if (read_res == ((ssize_t) 0)) break;
+		
+    // returned value is negative, meaning there's an error--end the program
+    if (read_res < ((size_t) 0)) {
+      // display error
+      fprintf(stderr, "Error reading: %s\n", strerror(errno));
+			
+      // deallocate memory
+      for (i=(size_t) 0; i <lines_len; i++) {
+	free(lines[i]);
+      }
+			
+      free(lines);
+      free(lines_lengths);
+      return 1;
+    }
+		
+    // no errors--we can set read_bytes value & continue w/ program
+    read_bytes = (size_t) read_res;
+    	
+    // handle the input and put it into memory
+    for (i = (size_t) 0; i<read_bytes; i++) { // start of for loop
+      // get the current character
+      c = buffer[i];
+
+      // put the current character into the current line
+      if ((current_line_len + ((size_t) 1)) > current_line_size) {
+	// allocate memory
+	if ((current_line_len == ((size_t) 0)) || (current_line == NULL)) {
+
+	  // first allocation
+	  ptr = (char *) malloc(FIRST_LINE_ALLOC_SIZE);
+	  if (ptr == NULL) {
+	    // print error
+	    fprintf(stderr, "Could not allocate any more memory.\n");
+
+	    // deallocate memory
+	    for (i=(size_t) 0; i <lines_len; i++) {
+	      free(lines[i]);
+	    }
+	    free(lines);
+	    free(lines_lengths);
+	    return 1;
+	  }
+	  current_line = ptr;
+	  current_line_size = FIRST_LINE_ALLOC_SIZE;
+	} else {
+	  // reallocation
+	  ptr = (char *) realloc(current_line,
+			       current_line_size * ((size_t) 2));
+	  // error in allocating memory
+	  if (ptr == NULL) {
+	    fprintf(stderr, "Could not allocate any more memory.\n");
+
+	    // deallocate everything
+	    for (i=(size_t) 0; i <lines_len; i++) {
+	      free(lines[i]);
+	    }
+	    free(lines);
+	    free(lines_lengths);
+	    return 1;
+	  }
+	  current_line = ptr;
+	  current_line_size *= (size_t) 2;
+	}
+      }
+      /* no errors so far--put the character into 'current_line',
+       increase 'current_line_len'*/
+      current_line[current_line_len] = c;
+      current_line_len++;
+
+      // checks if 'c' is a newline character. if so, start a new line
+      if (c == '\n') {
+
+	// allocate memory if necessary
+	if ( (lines_len + ( (size_t) 1) ) > lines_size) {
+	  if ((lines_len == ((size_t) 0)) || (lines == NULL)) {
+	    // first allocation
+	    lptr = (char **) malloc(FIRST_ARRAY_SIZE * sizeof(char *));
+	    if (lptr == NULL) {
+	      fprintf(stderr, "Could not allocate any more memory.\n");
+
+	      // deallocate everything
+	      for (i=(size_t) 0; i <lines_len; i++) {
+		free(lines[i]);
+	      }
+	      free(lines);
+	      free(lines_lengths);
+	      return 1;
+	    }
+	    lines = lptr;
+	    lines_size = FIRST_ARRAY_SIZE;
+
+	    // allocate memory and set pointer 'llptr' to point to it
+	    llptr = (size_t *)  malloc(FIRST_ARRAY_SIZE * sizeof(size_t));
+
+	    if (llptr == NULL) {
+	      fprintf(stderr, "Could not allocate any more memory.\n");
+
+	      // deallocate everything
+	      for (i=(size_t) 0; i <lines_len; i++) {
+		free(lines[i]);
+	      }
+	      free(lines);
+	      free(lines_lengths);
+	      return 1;
+	    }
+	    lines_lengths = llptr;
+	  } else { // need to reallocate
+	    // reallocation
+	    lptr = (char **) realloc (lines,
+		 lines_size * ((size_t) 2) * sizeof(char *) );
+	    if (lptr == NULL) {
+	      fprintf(stderr, "Could not allocate any more memory.\n");
+	      // TODO: we should deallocate all other lines before leaving
+	      // deallocate everything that has been allocated
+	      for (i=(size_t) 0; i <lines_len; i++) {
+		free(lines[i]);
+	      }
+	      free(lines);
+	      free(lines_lengths);
+	      return 1;
+	    }
+	    lines = lptr;
+	    lines_size *= (size_t) 2;
+
+	    // allocate memory and set pointer 'llptr' to point to it
+	    
+	    llptr = (size_t *) realloc(lines_lengths,
+			     lines_size * ( (size_t) 2) * sizeof(size_t) );
+	    if (llptr == NULL) {
+	      fprintf(stderr, "Could not allocate any more memory.\n");
+
+	      // deallocate everything
+	      for (i=(size_t) 0; i <lines_len; i++) {
+		free(lines[i]);
+	      }
+	      free(lines);
+	      free(lines_lengths);
+	      return 1;
+	    }
+	    
+	    // set lines_lengths to point where llptr is pointing
+	    lines_lengths = llptr;
+	  }
+	} // end of allocation
+	lines[lines_len] = current_line;
+	lines_lengths[lines_len] = current_line_len;
+	lines_len++;
+	current_line = NULL;
+	current_line_len = (size_t) 0;
+	current_line_size = (size_t) 0; // current_line_size
+      } // end of newline character check
+    } // end of for loop
+  } // end of while loop
+	
+  /* in the case when the last line has no new line character 
+     at the end, we need to put the line into the array of 
+     lines nevertheless */
+
+  if (!(current_line == NULL || current_line_len == (size_t) 0) ) {
+    // allocate memory if necessary
+    if (lines_len + ( (size_t) 1) > lines_size) {
+      if (lines_len == ( (size_t) 0) || lines == NULL) {
+	// first allocation
+	lptr = (char **) malloc(FIRST_ARRAY_SIZE * sizeof(char *) );
+	if (lptr == NULL) {
+	  fprintf(stderr, "Could not allocate more memory.\n");
+
+	  // deallocate everything
+	  for (i = (size_t) 0; i < lines_len; i++) {
+	    free(lines[i]);
+	  }
+	  free(lines);
+	  free(lines_lengths);
+	  return 1;
+	}
+	lines = lptr;
+	lines_size = FIRST_ARRAY_SIZE;
+	llptr = (size_t *) malloc(FIRST_ARRAY_SIZE * sizeof(size_t) );
+	if (llptr == NULL) {
+	  fprintf(stderr, "Could not allocate any more memory.\n");
+
+	  // deallocate everything
+	  for (i = (size_t) 0; i < lines_len; i++) {
+	    free(lines[i]);
+	  }
+	  free(lines);
+	  free(lines_lengths);
+	  return 1;
+	}
+	lines_lengths = llptr;
+      } else {
+	// reallocation
+	lptr = (char **) realloc(lines, lines_size * ((size_t) 2)
+				 * sizeof(char *) );
+	if (lptr == NULL) {
+	  fprintf(stderr, "Could not allocate more memory.\n");
+
+	  // deallocate everything
+	  for (i = (size_t) 0; i < lines_len; i++) {
+	    free(lines[i]);
+	  }
+	  free(lines);
+	  free(lines_lengths);
+	  return 1;
+	}
+	lines = lptr;
+	lines_size *= (size_t) 2;
+	
+	llptr = (size_t *) realloc(lines_lengths, lines_size * ( (size_t) 2)
+				   * sizeof(size_t) );
+	if (llptr == NULL) {
+	  fprintf(stderr, "Could not allocate any more memory.\n");
+
+	  // deallocate everything
+	  for (i = (size_t) 0; i < lines_len; i++) {
+	    free(lines[i]);
+	  }
+	  free(lines);
+	  free(lines_lengths);
+	  return 1;
+	}
+	lines_lengths = llptr;
+	
+      }
+	
+      lines[lines_len] = current_line;
+      lines_lengths[lines_len] = current_line_len;
+      lines_len++;
+      current_line = NULL;
+      current_line_len = (size_t) 0;
+      current_line_size = (size_t) 0;
+    }
+  }
+	
+  // here we have an array lines
+  // min(10, lines_len)
+  for (i = lines_len; i > ( (size_t) 0); i--) {
+    my_write(1, lines[i-(size_t)1], lines_lengths[i-1]);
+  }
+
+  // deallocate everything that has been allocated
+  for (i = (size_t) 0; i < lines_len; i++) {
+    free(lines[i]);
+  }
+  free(lines);
+  free(lines_lengths);
+
+  // signal success
+  return 0;
+} // end of main
